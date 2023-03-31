@@ -145,7 +145,8 @@ class SoundStreamTrainer(nn.Module):
         accelerator: Accelerator = None,
         accelerate_kwargs: dict = dict(),
         use_lion: bool = False,
-        force_clear_prev_results: bool = None  # set to True | False to skip the prompt
+        force_clear_prev_results: bool = None,  # set to True | False to skip the prompt
+        is_mp3: bool = False,
     ):
         """
         Initialize with a SoundStream instance and either a folder containing audio data or
@@ -218,7 +219,8 @@ class SoundStreamTrainer(nn.Module):
                 folder,
                 max_length = data_max_length,
                 target_sample_hz = soundstream.target_sample_hz,
-                seq_len_multiple_of = soundstream.seq_len_multiple_of
+                seq_len_multiple_of = soundstream.seq_len_multiple_of,
+                is_mp3 = is_mp3
             )
 
             # split for validation

@@ -16,7 +16,8 @@ from torch.utils.data import Dataset, DataLoader
 from audiolm_pytorch.utils import curtail_to_multiple
 
 from einops import rearrange
-
+import soundfile
+import soundfile as sf
 # helper functions
 
 def exists(val):
@@ -39,7 +40,8 @@ class SoundDataset(Dataset):
         exts = ['flac', 'wav', 'mp3', 'webm'],
         max_length: OptionalIntOrTupleInt = None,
         target_sample_hz: OptionalIntOrTupleInt = None,
-        seq_len_multiple_of: OptionalIntOrTupleInt = None
+        seq_len_multiple_of: OptionalIntOrTupleInt = None,
+        is_mp3 = False,
     ):
         super().__init__()
         path = Path(folder)
@@ -49,6 +51,7 @@ class SoundDataset(Dataset):
         assert len(files) > 0, 'no sound files found'
 
         self.files = files
+        self.is_mp3 = is_mp3
 
         self.target_sample_hz = cast_tuple(target_sample_hz)
         num_outputs = len(self.target_sample_hz)
@@ -64,8 +67,21 @@ class SoundDataset(Dataset):
     def __getitem__(self, idx):
         file = self.files[idx]
 
-        data, sample_hz = torchaudio.load(file)
-
+        if self.is_mp3:
+            try:
+                data, sample_hz = sf.read(file)
+            except soundfile.LibsndfileError:
+                print("Coudn't read file!")
+                data = torch.tensor([[0.0, 0.0]])
+                sample_hz = 16000   
+            if data.ndim == 1: # Mono
+                data = torch.tensor(data).unsqueeze(0)
+            else: # Stereo
+                data = torch.tensor(data).T  
+                
+        else:
+            data, sample_hz = torchaudio.load(file)
+            
         assert data.numel() > 0, f'one of your audio file ({file}) is empty. please remove it from your folder'
 
         if data.shape[0] > 1:
@@ -74,20 +90,17 @@ class SoundDataset(Dataset):
 
         num_outputs = len(self.target_sample_hz)
         data = cast_tuple(data, num_outputs)
-
+        
         # resample if target_sample_hz is not None in the tuple
-
         data_tuple = tuple((resample(d, sample_hz, target_sample_hz) if exists(target_sample_hz) else d) for d, target_sample_hz in zip(data, self.target_sample_hz))
-
+        
         output = []
 
         # process each of the data resample at different frequencies individually
-
         for data, max_length, seq_len_multiple_of in zip(data_tuple, self.max_length, self.seq_len_multiple_of):
             audio_length = data.size(1)
 
             # pad or curtail
-
             if audio_length > max_length:
                 max_start = audio_length - max_length
                 start = torch.randint(0, max_start, (1, ))
